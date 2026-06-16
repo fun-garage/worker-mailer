@@ -1,9 +1,13 @@
 {
-  "name": "worker-mailer",
+  "name": "@fun-garage/worker-mailer",
   "version": "1.2.1",
+  "description": "Cloudflare Workers 上で動作する依存ゼロの SMTP クライアント（fun-garage 組織向けフォーク）",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "keywords": [
     "cloudflare",
     "workers",
@@ -11,13 +15,16 @@
     "email",
     "smtp"
   ],
-  "author": "zou-yu",
+  "author": "fun-garage",
+  "contributors": [
+    "zou-yu (original author)"
+  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/zou-yu/worker-mailer.git"
+    "url": "https://github.com/fun-garage/worker-mailer.git"
   },
   "license": "MIT",
-  "homepage": "https://github.com/zou-yu/worker-mailer",
+  "homepage": "https://github.com/fun-garage/worker-mailer",
   "scripts": {
     "build": "tsup",
     "test": "vitest",

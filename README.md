@@ -1,110 +1,156 @@
-# Worker Mailer
+# @fun-garage/worker-mailer
 
-[English](./README.md) | [简体中文](./README_zh-CN.md)
+日本語 | [English (original)](./README.en.md) | [简体中文](./README_zh-CN.md)
 
-[![npm version](https://badge.fury.io/js/worker-mailer.svg)](https://badge.fury.io/js/worker-mailer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Worker Mailer is an SMTP client that runs on Cloudflare Workers. It leverages [Cloudflare TCP Sockets](https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/) and doesn't rely on any other dependencies.
+**Cloudflare Workers 上で動作する、依存ゼロの SMTP クライアント（メール送信ライブラリ）です。**
 
-## Features
+[zou-yu/worker-mailer](https://github.com/zou-yu/worker-mailer) を fun-garage 組織用にフォークしたものです。Cloudflare の [TCP Sockets](https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/) を使い、外部ライブラリに一切依存せずに SMTP サーバーへメールを送信します。
 
-- 🚀 Completely built on the Cloudflare Workers runtime with no other dependencies
-- 📝 Full TypeScript type support
-- 📧 Supports sending plain text and HTML emails with attachments
-- 🔒 Supports multiple SMTP authentication methods: `plain`, `login`, and `CRAM-MD5`
-- 📅 DSN support
+> 💡 主な用途はクライアントワークで制作した Web サイトの **お問い合わせフォーム** からのメール送信です。
+> フォームへの具体的な実装手順は **[お問い合わせフォーム実装ガイド](./docs/contact-form.ja.md)** にまとめています。
 
-## Table of Contents
+## 特徴
 
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [API Reference](#api-reference)
-- [Limitations](#limitations)
-- [Contributing](#contributing)
-- [License](#license)
+- 🚀 Cloudflare Workers ランタイムだけで完結（外部依存なし）
+- 📝 TypeScript の型定義を完備
+- 📧 プレーンテキスト / HTML / 添付ファイルに対応
+- 🔒 複数の SMTP 認証方式に対応: `plain` / `login` / `cram-md5`
+- 📅 DSN（配信状況通知）に対応
+- 🈂️ 件名・表示名の日本語（非 ASCII）を自動でエンコード（RFC 2047）
 
-## Installation
+## 目次
 
-```shell
-npm i worker-mailer
+- [インストール](#インストール)
+- [クイックスタート](#クイックスタート)
+- [API リファレンス](#api-リファレンス)
+- [制約事項](#制約事項)
+- [このフォークについて](#このフォークについて)
+- [開発](#開発)
+- [ライセンス](#ライセンス)
+
+## インストール
+
+公開 GitHub リポジトリから直接インストールします。**トークンやレジストリ設定は不要**です。
+
+```bash
+npm install github:fun-garage/worker-mailer
 ```
 
-## Quick Start
+バージョンを固定したい場合は、タグやコミットを指定します。
 
-1. Configure your `wrangler.toml`:
+```bash
+# タグを指定
+npm install github:fun-garage/worker-mailer#v1.2.1
+
+# package.json に直接書く場合
+# "dependencies": {
+#   "@fun-garage/worker-mailer": "github:fun-garage/worker-mailer#v1.2.1"
+# }
+```
+
+> 💡 このリポジトリにはビルド済みの `dist/` がコミットされているため、インストール時のビルドは不要です。
+> import 名はパッケージ名の `@fun-garage/worker-mailer` のままです。
+
+## クイックスタート
+
+### 1. `wrangler.toml` で Node.js 互換フラグを有効化
+
+`cloudflare:sockets` を使うために必要です。
 
 ```toml
 compatibility_flags = ["nodejs_compat"]
-# or compatibility_flags = ["nodejs_compat_v2"]
+# または compatibility_flags = ["nodejs_compat_v2"]
 ```
 
-2. Use in your code:
+### 2. コードから利用
+
+接続を維持して複数通送る場合:
 
 ```typescript
-import { WorkerMailer } from 'worker-mailer'
+import { WorkerMailer } from '@fun-garage/worker-mailer'
 
-// Connect to SMTP server
+// SMTP サーバーに接続
 const mailer = await WorkerMailer.connect({
+  host: 'smtp.acme.com',
+  port: 587,
+  secure: false, // 587 は STARTTLS を使うので false。465 のときは true
   credentials: {
     username: 'bob@acme.com',
     password: 'password',
   },
   authType: 'plain',
-  host: 'smtp.acme.com',
-  port: 587,
-  secure: true,
 })
 
-// Send email
+// 送信
 await mailer.send({
   from: { name: 'Bob', email: 'bob@acme.com' },
   to: { name: 'Alice', email: 'alice@acme.com' },
-  subject: 'Hello from Worker Mailer',
-  text: 'This is a plain text message',
-  html: '<h1>Hello</h1><p>This is an HTML message</p>',
+  subject: 'Worker Mailer からこんにちは',
+  text: 'これはプレーンテキストの本文です',
+  html: '<h1>こんにちは</h1><p>これは HTML の本文です</p>',
 })
+
+// 使い終わったら必ず閉じる（TCP 接続を解放するため）
+await mailer.close()
 ```
 
-3. Using with modern JavaScript frameworks (Next.js, Nuxt, SvelteKit, etc.)
+### 3. 1 通だけ送る（使い切り）
 
-When working with frameworks that use Node.js as their development runtime, you'll need to handle the fact that Cloudflare Workers-specific APIs (like `cloudflare:sockets`) aren't available during local development.
+お問い合わせフォームのような「1 リクエストで 1 通」の用途では、接続〜送信〜切断を一括で行う静的メソッドが便利です。
 
-The recommended approach is to use conditional dynamic imports. Here's an example for Nuxt.js:
+```typescript
+import { WorkerMailer } from '@fun-garage/worker-mailer'
+
+await WorkerMailer.send(
+  {
+    host: 'smtp.acme.com',
+    port: 587,
+    credentials: { username: 'user', password: 'pass' },
+    authType: 'plain',
+  },
+  {
+    from: 'sender@acme.com',
+    to: 'recipient@acme.com',
+    subject: 'お問い合わせを受け付けました',
+    text: 'お問い合わせありがとうございます。',
+  },
+)
+```
+
+### 4. Next.js / Nuxt / SvelteKit などのフレームワークと併用する場合
+
+開発時は Node.js ランタイムで動くため、`cloudflare:sockets` が使えません。動的 import で本番（Workers）と開発（nodemailer 等）を切り替えます。
 
 ```typescript
 export default defineEventHandler(async event => {
-  // Check if running in development environment
   if (import.meta.dev) {
-    // Development: Use nodemailer (or any Node.js compatible email library)
+    // 開発: nodemailer など Node.js 対応のライブラリを使う
     const nodemailer = await import('nodemailer')
-    const transporter = nodemailer.default.createTransport()
-    return await transporter.sendMail()
+    const transporter = nodemailer.default.createTransport(/* ... */)
+    return await transporter.sendMail(/* ... */)
   } else {
-    // Production: Use worker-mailer in Cloudflare Workers environment
-    const { WorkerMailer } = await import('worker-mailer')
-    const mailer = await WorkerMailer.connect()
-    return await mailer.send()
+    // 本番: Cloudflare Workers 上で worker-mailer を使う
+    const { WorkerMailer } = await import('@fun-garage/worker-mailer')
+    await WorkerMailer.send(/* config */, /* email */)
   }
 })
 ```
 
-This pattern ensures your application works seamlessly in both development and production environments.
+## API リファレンス
 
-## API Reference
+### `WorkerMailer.connect(options)`
 
-### WorkerMailer.connect(options)
-
-Creates a new SMTP connection.
+SMTP 接続を確立し、認証まで済ませた `WorkerMailer` を返します。
 
 ```typescript
 type WorkerMailerOptions = {
-  host: string // SMTP server hostname
-  port: number // SMTP server port (usually 587 or 465)
-  secure?: boolean // Use TLS (default: false)
-  startTls?: boolean // Upgrade to TLS if SMTP server supports (default: true)
+  host: string // SMTP サーバーのホスト名
+  port: number // ポート（通常 587 または 465）
+  secure?: boolean // 最初から TLS で接続するか（既定: false）
+  startTls?: boolean // STARTTLS で TLS に昇格するか（既定: true）
   credentials?: {
-    // SMTP authentication credentials
     username: string
     password: string
   }
@@ -113,190 +159,87 @@ type WorkerMailerOptions = {
     | 'login'
     | 'cram-md5'
     | Array<'plain' | 'login' | 'cram-md5'>
-  logLevel?: LogLevel // Logging level (default: LogLevel.INFO)
-  socketTimeoutMs?: number // Socket timeout in milliseconds
-  responseTimeoutMs?: number // Server response timeout in milliseconds
+  logLevel?: LogLevel // ログレベル（既定: LogLevel.INFO）
+  socketTimeoutMs?: number // ソケット接続のタイムアウト（ミリ秒。既定: 60000）
+  responseTimeoutMs?: number // サーバー応答待ちのタイムアウト（ミリ秒。既定: 30000）
   dsn?: {
-    RET?: {
-      HEADERS?: boolean
-      FULL?: boolean
-    }
-    NOTIFY?: {
-      DELAY?: boolean
-      FAILURE?: boolean
-      SUCCESS?: boolean
-    }
+    RET?: { HEADERS?: boolean; FULL?: boolean }
+    NOTIFY?: { DELAY?: boolean; FAILURE?: boolean; SUCCESS?: boolean }
   }
 }
 ```
 
-### mailer.send(options)
+### `mailer.send(options)`
 
-Sends an email.
+メールを送信します（内部のキューに積まれ、順番に送信されます）。
 
 ```typescript
 type EmailOptions = {
-  from:
-    | string
-    | {
-        // Sender's email
-        name?: string
-        email: string
-      }
+  from: string | { name?: string; email: string } // 送信元
   to:
     | string
     | string[]
-    | {
-        // Recipients (TO)
-        name?: string
-        email: string
-      }
-    | Array<{ name?: string; email: string }>
-  reply?:
-    | string
-    | {
-        // Reply-To address
-        name?: string
-        email: string
-      }
-  cc?:
-    | string
-    | string[]
-    | {
-        // Carbon Copy recipients
-        name?: string
-        email: string
-      }
-    | Array<{ name?: string; email: string }>
-  bcc?:
-    | string
-    | string[]
-    | {
-        // Blind Carbon Copy recipients
-        name?: string
-        email: string
-      }
-    | Array<{ name?: string; email: string }>
-  subject: string // Email subject
-  text?: string // Plain text content
-  html?: string // HTML content
-  headers?: Record<string, string> // Custom email headers
-  attachments?: { filename: string; content: string; mimeType?: string }[] // Attachments, content must be base64-encoded, it will try to infer mimeType if not set
-  dsnOverride?: // overrides dsn defined in WorkerMailer, if not set, it will take the WorkerMailer-Option.
-  {
-    envelopeId?: string | undefined
-    RET?: {
-      HEADERS?: boolean
-      FULL?: boolean
-    }
-    NOTIFY?: {
-      DELAY?: boolean
-      FAILURE?: boolean
-      SUCCESS?: boolean
-    }
+    | { name?: string; email: string }
+    | Array<{ name?: string; email: string }> // 宛先（To）
+  reply?: string | { name?: string; email: string } // 返信先（Reply-To）
+  cc?: /* to と同じ型 */ // CC
+  bcc?: /* to と同じ型 */ // BCC
+  subject: string // 件名
+  text?: string // プレーンテキスト本文
+  html?: string // HTML 本文
+  headers?: Record<string, string> // 追加・上書きするヘッダ
+  // 添付。content は base64 エンコード済み。mimeType 省略時は拡張子から推測。
+  attachments?: { filename: string; content: string; mimeType?: string }[]
+  // この 1 通だけ DSN 設定を上書き
+  dsnOverride?: {
+    envelopeId?: string
+    RET?: { HEADERS?: boolean; FULL?: boolean }
+    NOTIFY?: { DELAY?: boolean; FAILURE?: boolean; SUCCESS?: boolean }
   }
 }
 ```
 
-### Static Method: WorkerMailer.send()
+> `text` と `html` の少なくとも一方は必須です。両方指定すると、受信側の環境に応じて表示が切り替わります（`multipart/alternative`）。
 
-Send a one-off email without maintaining the connection.
+### `mailer.close()`
 
-```typescript
-await WorkerMailer.send(
-  {
-    // WorkerMailerOptions
-    host: 'smtp.acme.com',
-    port: 587,
-    credentials: {
-      username: 'user',
-      password: 'pass',
-    },
-  },
-  {
-    // EmailOptions
-    from: 'sender@acme.com',
-    to: 'recipient@acme.com',
-    subject: 'Test',
-    text: 'Hello',
-    attachments: [
-      {
-        filename: 'test.txt',
-        content: 'SGVsbG8gV29ybGQ=', // base64-encoded string for "Hello World"
-        type: 'text/plain',
-      },
-    ],
-  },
-)
+接続を閉じ、TCP 接続を解放します。`connect()` を使った場合は必ず呼んでください。
+
+### `WorkerMailer.send(options, email)`（静的メソッド）
+
+接続を維持せず、1 通だけ送って閉じます。第 1 引数が接続設定、第 2 引数がメール内容です。
+
+## 制約事項
+
+- **ポート制限:** Cloudflare Workers はポート 25 への外向き接続ができません。25 番は使えませんが、587 / 465 は利用可能です。
+- **同時接続数:** Worker インスタンスごとに同時 TCP 接続数の上限があります。送信後は必ず `close()` で接続を閉じてください。
+
+## このフォークについて
+
+- 上流は [zou-yu/worker-mailer](https://github.com/zou-yu/worker-mailer)（MIT ライセンス）です。
+- fun-garage 組織向けに以下を変更しています。
+  - パッケージ名を `@fun-garage/worker-mailer` に変更し、公開 GitHub リポジトリから git でインストールする方式に（`dist/` をコミット）
+  - ソースコード全体に日本語の解説コメントを追加
+  - 軽微な整理: `responseTimeoutMs` が効かなかった不具合を修正、DSN パラメータ生成の重複を整理
+  - 日本語 README とお問い合わせフォーム実装ガイドを追加
+
+## 開発
+
+```bash
+# 依存関係のインストール（pnpm 推奨）
+pnpm install
+
+# ユニットテスト
+npm test
+
+# 結合テスト（ローカルで Worker を起動して実際に送信）
+pnpm dlx wrangler dev ./test/worker.ts
+# 起動後、http://127.0.0.1:8787 へ POST する（test/worker.ts 参照）
+
+# ビルド（dist/ に CJS / ESM / 型定義を出力）
+npm run build
 ```
 
-## Limitations
+## ライセンス
 
-- **Port Restrictions:** Cloudflare Workers cannot make outbound connections on port 25. You won't be able to send emails via port 25, but common ports like 587 and 465 are supported.
-- **Connection Limits:** Each Worker instance has a limit on the number of concurrent TCP connections. Make sure to properly close connections when done.
-
-## Contributing
-
-### Development Workflow
-
-> For major changes, please open an issue first to discuss what you would like to change.
-
-1. Fork and clone the repository
-2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-3. Create a new branch for your feature from `develop`:
-   ```bash
-   git checkout -b feat/your-feature-name
-   ```
-4. Make your changes and make sure all tests pass
-5. Update README.md & changelog `pnpm changeset` if needed
-6. Push your changes to your fork and create a pull request from your branch to `develop`
-
-### Testing
-
-1. Unit Tests:
-   ```bash
-   npm test
-   ```
-2. Integration Tests:
-   ```bash
-   pnpm dlx wrangler dev ./test/worker.ts
-   ```
-   Then, send a POST request to `http://127.0.0.1:8787` with the following JSON body:
-   ```json
-   {
-     "config": {
-       "credentials": {
-         "username": "xxx@xx.com",
-         "password": "xxxx"
-       },
-       "authType": "plain",
-       "host": "smtp.acme.com",
-       "port": 587,
-       "secure": false,
-       "startTls": true
-     },
-     "email": {
-       "from": "xxx@xx.com",
-       "to": "yyy@yy.com",
-       "subject": "Test Email",
-       "text": "Hello World"
-     }
-   }
-   ```
-
-### Reporting Issues
-
-When reporting issues, please include:
-
-- Version of worker-mailer you're using
-- A clear description of the problem
-- Steps to reproduce the issue
-- Expected vs actual behavior
-- Any relevant code snippets or error messages
-
-## License
-
-This project is licensed under the MIT License.
+MIT License. 上流プロジェクトの著作権表示を継承します。

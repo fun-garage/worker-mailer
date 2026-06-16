@@ -1,5 +1,6 @@
 node_modules/
-dist/
+# dist/ は git install で利用するためコミットする（A 方式）。
+# src を変更したら必ず `npm run build` で再生成してからコミットすること。
 
 .env
 

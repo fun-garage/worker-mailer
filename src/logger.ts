@@ -1,3 +1,4 @@
+// ログ出力レベル。数値が小さいほど詳細。NONE で完全に無効化。
 export enum LogLevel {
   DEBUG = 0,
   INFO = 1,
@@ -6,6 +7,10 @@ export enum LogLevel {
   NONE = 4,
 }
 
+/**
+ * レベル付きの簡易ロガー。設定レベル以上のログだけを console に出力する。
+ * prefix（例: [WorkerMailer:smtp.example.com:587]）を各行の先頭に付ける。
+ */
 export default class Logger {
   private readonly prefix: string
 

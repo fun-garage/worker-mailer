@@ -9,7 +9,7 @@
 [zou-yu/worker-mailer](https://github.com/zou-yu/worker-mailer) を fun-garage 組織用にフォークしたものです。Cloudflare の [TCP Sockets](https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/) を使い、外部ライブラリに一切依存せずに SMTP サーバーへメールを送信します。
 
 > 💡 主な用途はクライアントワークで制作した Web サイトの **お問い合わせフォーム** からのメール送信です。
-> フォームへの具体的な実装手順は **[お問い合わせフォーム実装ガイド](./docs/contact-form.ja.md)** にまとめています。
+> フォームへの具体的な実装手順は **[お問い合わせフォーム実装ガイド（Astro + Cloudflare 版）](./docs/contact-form-astro.ja.md)** にまとめています（Astro 6 / Astro Actions / workerd ランタイム前提。Astro を使わない構成向けの補足も同ガイド内に記載）。
 
 ## 特徴
 
